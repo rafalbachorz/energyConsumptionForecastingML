@@ -78,8 +78,10 @@ ggplot(data = locData$dataFrame[1:24*7,], aes(x = Time, y = Energy)) + geom_poin
 
 # create day of week feature
 locData$dataFrame$dayOfWeek <- as.factor(dayOfWeek(timeDate(locData$dataFrame$Time)))
+# create hour feature
+locData$dataFrame$hour <- as.factor(format(locData$dataFrame$Time, "%H"))
 # convert to "othogonal" space
-dataset <- data.frame(predict(dummyVars(~ dayOfWeek + Energy + Time, data = locData$dataFrame), newdata = locData$dataFrame))
+dataset <- data.frame(predict(dummyVars(~ dayOfWeek + hour + Energy + Time, data = locData$dataFrame), newdata = locData$dataFrame))
 dataset$Time <- as.POSIXlt(dataset$Time, origin = "1970-01-01", tz = "GMT")
 
 # how do first three days look like? 
@@ -93,10 +95,10 @@ trainindex <- createDataPartition(index,p = 0.75,list = FALSE)
 length(trainindex)/length(index)
 
 ##process class sets as data frames
-training = as.data.frame(dataset[trainindex, 1:8])
+training = as.data.frame(dataset[trainindex, 1:32])
 rownames(training) = NULL
 head(training)
-testing = as.data.frame(dataset[-trainindex, 1:8])
+testing = as.data.frame(dataset[-trainindex, 1:32])
 rownames(testing) = NULL
 head(testing)
 
@@ -105,7 +107,7 @@ u <- -2 ## -3,-2,-1,0,1,2,3
 gam <- 10^{u}; w= 4.5 ##1.5,-1,0.5,2,3,4
 cost <- 10^{w}
 
-svmFit <- svm(training[,1:7], training[,8], 
+svmFit <- svm(training[,1:31], training[,32], 
               type = type,
               kernel = "radial",
               gamma = gam,
@@ -121,11 +123,11 @@ svmFit <- svm(training$Energy ~ training$dayOfWeek.Fri + training$dayOfWeek.Mon 
 summary(svmFit)
 ?predict
 
-predsvm <- predict(svmFit, testing[,1:7])
+predsvm <- predict(svmFit, testing[,1:31])
 head(predsvm)
 
 ###EVALUATION
-actualTS <- testing[,8]
+actualTS <- testing[,32]
 predicTS <- predsvm ##choose appropriate
 
 str(actualTS)
@@ -140,12 +142,18 @@ nrmse <- sqrt(ssr/((length(actualTS)-1)*var(actualTS))); nrmse
 ##percentage of outperforming direct sample mean (sample expected value)
 pcorrect = (1-nrmse)*100; pcorrect
 ##For visual comparison
-yl=c(min(actualTS,predicTS),max(actualTS,predicTS)) #set y limits
-plot(actualTS,predicTS,ylim=yl)
+plotData <- data.frame(actualTS, predicTS)
+colnames(plotData) <- c("real", "predicted")
+ggplot(data = plotData, aes(x = real, y = predicted)) + geom_point()
 
-?svmFit
 
-?dummySet
+
+
+##################################################################################
+##################################################################################
+##################################################################################
+##################################################################################
+
 
 ########Nonlinear models#############################
 ####### SVM and Neural networks ############
