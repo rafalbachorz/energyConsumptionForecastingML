@@ -28,20 +28,9 @@ energyData$Date <- as.Date(energyData$Date, format = "%d/%m/%Y")
 energyData %>% filter(is.na(Date))
 # not needed anymore
 #energyData <- energyData %>% filter(!is.na(Date))
-minDate <- min(energyData$Date)
-maxDate <- max(energyData$Date)
 
 #local environment
 locData <- new.env()
-
-#seq(as.Date("2016-01-01"), as.Date("2016-01-02"), by = "hour")
-#seq(strptime("2016-01-01 00:00:00", "YYYY-mm-dd hh:mm:ss"), as.Date("2016-01-02"), by = "hour")
-#?strptime
-
-#rowDF1 <- data.frame(locData$row[energyLabels])
-#rowDF2 <- data.frame(locData$row[energyLabels])
-#rbind(rowDF1, rowDF2)
-#min(energyData$Date)
 
 transpose <- function(x, locData, energyLabels){
   rowDF <- data.frame(as.double(x[energyLabels]))
@@ -56,25 +45,31 @@ str(locData$dataFrame)
 #locData$dataFrame$Energy <- as.double(locData$dataFrame$Energy)
 head(locData$dataFrame)
 
-
+# one year of data
+energySubset <- energyData %>% filter(Date >= as.Date("2012-01-01"), Date < as.Date("2013-01-01"))
 #supress output
 sink("NUL")
-apply(energyData[1:365,], 1, invisible(transpose), locData, energyLabels)
+apply(energySubset, 1, transpose, locData, energyLabels)
 sink()
-timeAxis <- seq(from = as.POSIXlt(minDate, tz = "GMT"), by = 1800, length.out = nrow(locData$dataFrame))
+timeAxis <- seq(from = as.POSIXlt(min(energySubset$Date), tz = "GMT"), by = 1800, length.out = nrow(locData$dataFrame))
 locData$dataFrame$Time <- timeAxis
 head(locData$dataFrame)
 nrow(locData$dataFrame)
 
+# aggregation to one-hour resolution
+locData$dataFrame <- locData$dataFrame %>% group_by(format(Time, "%Y-%m-%d %H")) %>% summarise(mean(Energy), min(Time))
+colnames(locData$dataFrame) <- c("hour", "Energy", "Time")
+locData$dataFrame$hour <- NULL
+
 # there are some NA energies, drop them out
 locData$dataFrame %>% filter(is.na(Energy))
-locData$dataFrame <- locData$dataFrame %>% filter(!is.na(Energy))
+#locData$dataFrame <- locData$dataFrame %>% filter(!is.na(Energy))
 
 str(locData$dataFrame)
 # plot all data
 ggplot(data = locData$dataFrame, aes(x = Time, y = Energy)) + geom_point()
 # plot one week
-ggplot(data = locData$dataFrame[1:24*7,], aes(x = Time, y = Energy)) + geom_point()
+ggplot(data = locData$dataFrame[1:24*7,], aes(x = Time, y = Energy)) + geom_line()
 
 # create day of week feature
 locData$dataFrame$dayOfWeek <- as.factor(dayOfWeek(timeDate(locData$dataFrame$Time)))
@@ -87,20 +82,31 @@ dataset$Time <- as.POSIXlt(dataset$Time, origin = "1970-01-01", tz = "GMT")
 # how do first three days look like? 
 head(dataset, n = 72)
 
+
 index = 1:nrow(dataset)
 
-trainindex <- createDataPartition(index,p = 0.75,list = FALSE)
+#### standard approach
+#trainindex <- createDataPartition(index,p = 0.75,list = FALSE)
+
+#### history forecast approach
+lenIDX <- length(index)
+trainindex <- 1:(lenIDX - 24*14)
+length(trainindex)
+####
 
 # check
 length(trainindex)/length(index)
 
 ##process class sets as data frames
-training = as.data.frame(dataset[trainindex, 1:32])
+training <- as.data.frame(dataset[trainindex, 1:32])
 rownames(training) = NULL
 head(training)
 testing = as.data.frame(dataset[-trainindex, 1:32])
 rownames(testing) = NULL
 head(testing)
+
+
+
 
 type <- "eps-regression" ##regression
 u <- -2 ## -3,-2,-1,0,1,2,3
@@ -113,12 +119,12 @@ svmFit <- svm(training[,1:31], training[,32],
               gamma = gam,
               cost = cost)
 
-svmFit <- svm(training$Energy ~ training$dayOfWeek.Fri + training$dayOfWeek.Mon + training$dayOfWeek.Sat + training$dayOfWeek.Sun + 
-                training$dayOfWeek.Thu + training$dayOfWeek.Tue + training$dayOfWeek.Wed, 
-              type = type,
-              kernel = "radial",
-              gamma = gam,
-              cost = cost)
+#svmFit <- svm(training$Energy ~ training$dayOfWeek.Fri + training$dayOfWeek.Mon + training$dayOfWeek.Sat + training$dayOfWeek.Sun + 
+#                training$dayOfWeek.Thu + training$dayOfWeek.Tue + training$dayOfWeek.Wed, 
+#              type = type,
+#              kernel = "radial",
+#              gamma = gam,
+#              cost = cost)
 
 summary(svmFit)
 ?predict
@@ -130,10 +136,10 @@ head(predsvm)
 actualTS <- testing[,32]
 predicTS <- predsvm ##choose appropriate
 
-str(actualTS)
-str(predicTS)
-length(predicTS)
-length(actualTS)
+#str(actualTS)
+#str(predicTS)
+#length(predicTS)
+#length(actualTS)
 
 ##1. Evaluation for return prediction. Residual sum of squares
 ssr <- sum((actualTS - predicTS)^2); ssr
@@ -145,9 +151,35 @@ pcorrect = (1-nrmse)*100; pcorrect
 plotData <- data.frame(actualTS, predicTS)
 colnames(plotData) <- c("real", "predicted")
 ggplot(data = plotData, aes(x = real, y = predicted)) + geom_point()
+ggplot(data = dataset[-trainindex,], aes(x = Time, y = Energy)) + geom_point()
+dataset[-trainindex, "predictedEnergy"] <- predicTS
 
+#ggplot(data = dataset[-trainindex,], aes(x = Time, y = [Energy, predictedEnergy])) + geom_point()
 
+plot(dataset[-trainindex, "Time"], dataset[-trainindex, "Energy"], type = "lines", col = "red")
+lines(dataset[-trainindex, "Time"], dataset[-trainindex, "predictedEnergy"], type = "lines", col = "blue")
 
+# Exploratory data analysis
+datasetTmp <- dataset
+datasetTmp$Time <- as.POSIXct(datasetTmp$Time, tz = "GMT")
+head(dataset)
+datasetTmp %>% filter(dayOfWeek.Fri == 1, hour.00 == 1) %>% select(Time, Energy)
+head(locData$dataFrame)
+groupedData <- locData$dataFrame %>% group_by(dayOfWeek, hour) %>% summarise(Emin = min(Energy), Emax = max(Energy), Esd = sd(Energy)) %>% 
+                                     mutate(deltaMinMax = Emax - Emin) %>%  arrange(desc(Esd))
+
+DF_Fri_11 <- locData$dataFrame %>% filter(dayOfWeek == "Fri", hour == 11)
+DF_Tue_10 <- locData$dataFrame %>% filter(dayOfWeek == "Tue", hour == 10)
+DF_Tue_13 <- locData$dataFrame %>% filter(dayOfWeek == "Tue", hour == 13)
+DF_Sun_04 <- locData$dataFrame %>% filter(dayOfWeek == "Sun", hour == "04")
+
+head(DF_Tue_14)
+ggplot(data = DF_Fri_11, aes(x = Time, y = Energy)) + geom_line()
+ggplot(data = DF_Tue_10, aes(x = Time, y = Energy)) + geom_line()
+ggplot(data = DF_Tue_13, aes(x = Time, y = Energy)) + geom_line()
+ggplot(data = DF_Sun_04, aes(x = Time, y = Energy)) + geom_line()
+
+?as.POSIXlt
 
 ##################################################################################
 ##################################################################################
