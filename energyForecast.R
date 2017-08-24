@@ -8,6 +8,7 @@ library(timeDate)
 library(dplyr)
 library(caret)
 library(e1071)
+library(randomForest)
 
 wdir="E:\\R\\energyConsumptionForecast"
 setwd(wdir)
@@ -25,10 +26,12 @@ colnames(energyData) <- c("Location", "Utility", "Unit", "Date", energyLabels, "
 energyData <- energyData %>% filter(Location == "Kew site")
 energyData$Date <- as.Date(energyData$Date, format = "%d/%m/%Y")
 #which rows are wrong?
+head(energyData)
 energyData %>% filter(is.na(Date))
 # not needed anymore
 #energyData <- energyData %>% filter(!is.na(Date))
-
+min(energyData$Date)
+max(energyData$Date)
 #local environment
 locData <- new.env()
 
@@ -47,13 +50,27 @@ head(locData$dataFrame)
 
 # one year of data
 energySubset <- energyData %>% filter(Date >= as.Date("2012-01-01"), Date < as.Date("2013-01-01"))
+
+#transposeAllTable
+energySubset <- energyData
+
 #supress output
 sink("NUL")
 apply(energySubset, 1, transpose, locData, energyLabels)
 sink()
+
+timeAxis <- seq(from = as.POSIXlt(min(energySubset$Date), tz = "GMT"), by = 1800, length.out = nrow(locData$dataFrame))
+head(locData$dataFrame)
+tail(locData$dataFrame)
+
+tmptmp <- locData$dataFrame
+write.table(tmptmp, file = "energyDataTimeValue.csv", sep = ",", row.names = FALSE)
+?write.csv
+
 timeAxis <- seq(from = as.POSIXlt(min(energySubset$Date), tz = "GMT"), by = 1800, length.out = nrow(locData$dataFrame))
 locData$dataFrame$Time <- timeAxis
 head(locData$dataFrame)
+tail(locData$dataFrame)
 nrow(locData$dataFrame)
 
 # aggregation to one-hour resolution
@@ -63,11 +80,85 @@ locData$dataFrame$hour <- NULL
 
 # there are some NA energies, drop them out
 locData$dataFrame %>% filter(is.na(Energy))
-#locData$dataFrame <- locData$dataFrame %>% filter(!is.na(Energy))
+locData$dataFrame <- locData$dataFrame %>% filter(!is.na(Energy))
 
 str(locData$dataFrame)
+
+
+#### seasonal decommposition
+library(xts)
+library(forecast)
+tmptmp <- xts(locData$dataFrame$Energy, order.by = locData$dataFrame$Time)
+etsV <- ets(tmptmp)
+seasonalTS <- msts(locData$dataFrame$Energy, seasonal.periods = c(24*7))
+ttt <- decompose(seasonalTS)
+head(ttt)
+decomposedDF <- data.frame(ttt[1], ttt[2], ttt[3], ttt[4], Time = locData$dataFrame$Time)
+head(decomposedDF)
+
+ggplot(data = decomposedDF) + geom_line(aes(x = Time, y = seasonal), color = "red") +
+                              geom_line(aes(x = Time, y = trend), color = "blue") +
+                              geom_line(aes(x = Time, y = random), color = "green")
+
+?decompose
+
+fff <- ttt[1]
+length(unlist(fff))
+plot(ttt)
+
+tbatsOBJ <- tbats(seasonalTS)
+
+
+attr(tmptmp, 'frequency') <- 60
+decomposed <- decompose(as.ts(tmptmp))
+length(decomposed[3])
+?decompose
+plot(decomposed)
+stl(tmptmp)
+ets
+?stl
+# fit <- stl(tmptmp, s.window = 9)
+# seasonal <- tbats(tmptmp)
+# plot(seasonal)
+# str(tmptmp)
+# ?stl
+ts(1:10, frequency = 3, start = c(1959, 1, 1, 0, 0, 0))
+# tmptmp <- ts(locData$dataFrame$Energy, )
+#   data.frame(time = locData$dataFrame$Time, energy = locData$dataFrame$Energy)
+# 
+# head(tmptmp)
+# str(nottem)
+# head(nottem)
+####
+
 # plot all data
 ggplot(data = locData$dataFrame, aes(x = Time, y = Energy)) + geom_point()
+
+# add simple seasonal behaviour
+head(locData$dataFrame)
+# seasons: 
+# 1 - Jan - Feb
+# 2 - Mar - Jun
+# 3 - 
+nL <- 24*14
+locData$dataFrame$season <- EMA(locData$dataFrame$Energy, n = nL)
+locData$dataFrame$season[1:nL] <- locData$dataFrame$season[nL+1]
+
+# plot all data
+ggplot(data = locData$dataFrame, aes(x = Time, y = Energy)) + geom_point() + geom_line(aes(x = Time, y = season, col = "red"))
+
+
+# turn into categorical variable
+locData$dataFrame$season <- cut(locData$dataFrame$season, breaks = 4, labels = c("1", "2", "3", "4"))
+head(locData$dataFrame$season, n = 500)
+# normalize
+#maxSeason <- max(locData$dataFrame$season)
+#minSeason <- min(locData$dataFrame$season)
+#locData$dataFrame$season <- (locData$dataFrame$season - minSeason) / (maxSeason - minSeason)
+#locData$dataFrame[nL:(nL+50), 'season']
+
+
+
 # plot one week
 ggplot(data = locData$dataFrame[1:24*7,], aes(x = Time, y = Energy)) + geom_line()
 
@@ -75,13 +166,14 @@ ggplot(data = locData$dataFrame[1:24*7,], aes(x = Time, y = Energy)) + geom_line
 locData$dataFrame$dayOfWeek <- as.factor(dayOfWeek(timeDate(locData$dataFrame$Time)))
 # create hour feature
 locData$dataFrame$hour <- as.factor(format(locData$dataFrame$Time, "%H"))
+str(locData$dataFrame)
+
 # convert to "othogonal" space
-dataset <- data.frame(predict(dummyVars(~ dayOfWeek + hour + Energy + Time, data = locData$dataFrame), newdata = locData$dataFrame))
-dataset$Time <- as.POSIXlt(dataset$Time, origin = "1970-01-01", tz = "GMT")
+dataset <- data.frame(predict(dummyVars(~ dayOfWeek + hour + + season + Energy + Time, data = locData$dataFrame), newdata = locData$dataFrame))
+dataset$Time <- as.POSIXct(dataset$Time, origin = "1970-01-01", tz = "GMT")
 
 # how do first three days look like? 
 head(dataset, n = 72)
-
 
 index = 1:nrow(dataset)
 
@@ -89,8 +181,11 @@ index = 1:nrow(dataset)
 #trainindex <- createDataPartition(index,p = 0.75,list = FALSE)
 
 #### history forecast approach
+trainindex <- which(dataset$Time < as.POSIXct("2012-11-01 00:00", format = "%Y-%m-%d %H:%M", tz = "GMT") | dataset$Time >= as.POSIXct("2012-12-01 00:00", format = "%Y-%m-%d %H:%M", tz = "GMT"))
+#as.POSIXct("2012-01-01 00:00", format = "%Y-%m-%d %H:%M")
+
 lenIDX <- length(index)
-trainindex <- 1:(lenIDX - 24*14)
+trainindex <- 1:(lenIDX - 24*31)
 length(trainindex)
 ####
 
@@ -98,14 +193,18 @@ length(trainindex)
 length(trainindex)/length(index)
 
 ##process class sets as data frames
-training <- as.data.frame(dataset[trainindex, 1:32])
+#7 (dayOfWeek) + 24 (hour) + 1 (season) + 1 (response)
+featuresResponseCols <- c(seq(1, 7), seq(8, 8+23), seq(32, 35), 36)
+#featuresResponseCols <- c(seq(1, 7), seq(8, 8+23), 33)
+dataSetCols <- length(featuresResponseCols)
+
+head(dataset[trainindex, featuresResponseCols])
+training <- as.data.frame(dataset[trainindex, featuresResponseCols])
 rownames(training) = NULL
 head(training)
-testing = as.data.frame(dataset[-trainindex, 1:32])
+testing = as.data.frame(dataset[-trainindex, featuresResponseCols])
 rownames(testing) = NULL
 head(testing)
-
-
 
 
 type <- "eps-regression" ##regression
@@ -113,28 +212,29 @@ u <- -2 ## -3,-2,-1,0,1,2,3
 gam <- 10^{u}; w= 4.5 ##1.5,-1,0.5,2,3,4
 cost <- 10^{w}
 
-svmFit <- svm(training[,1:31], training[,32], 
+# support vector machine
+svmFit <- svm(training[,1:(dataSetCols-1)], 
+              training[,dataSetCols], 
               type = type,
               kernel = "radial",
               gamma = gam,
               cost = cost)
-
-#svmFit <- svm(training$Energy ~ training$dayOfWeek.Fri + training$dayOfWeek.Mon + training$dayOfWeek.Sat + training$dayOfWeek.Sun + 
-#                training$dayOfWeek.Thu + training$dayOfWeek.Tue + training$dayOfWeek.Wed, 
-#              type = type,
-#              kernel = "radial",
-#              gamma = gam,
-#              cost = cost)
-
 summary(svmFit)
-?predict
+predsvm <- predict(svmFit, testing[,1:(dataSetCols-1)])
+# random forest
+rfFit <- randomForest(training[,1:(dataSetCols-1)], 
+                      training[,dataSetCols],,
+                      ntree = 500)
+summary(rfFit)
+predrf <- predict(rfFit, testing[,1:(dataSetCols-1)])
 
-predsvm <- predict(svmFit, testing[,1:31])
 head(predsvm)
+head(predrf)
 
 ###EVALUATION
-actualTS <- testing[,32]
+actualTS <- testing[,dataSetCols]
 predicTS <- predsvm ##choose appropriate
+predicTS <- predrf ##choose appropriate
 
 #str(actualTS)
 #str(predicTS)
@@ -150,14 +250,36 @@ pcorrect = (1-nrmse)*100; pcorrect
 ##For visual comparison
 plotData <- data.frame(actualTS, predicTS)
 colnames(plotData) <- c("real", "predicted")
+plotData$time <- dataset[-trainindex, "Time"]
+plotData$delta <- plotData$predicted - plotData$real
+plotData$dow <- dayOfWeek(timeDate(plotData$time))
+
+ggplot(data = plotData) + geom_line(aes(x = time, y = real), color = "red") + geom_line(aes(x = time, y = predicted), color = "blue") + 
+  theme(legend.position = "bottom") + xlab("Time (forecasted period)")
+
+ggplot(data = plotData) + geom_line(aes(x = time, y = delta)) + ggtitle("Residue distribution") + xlab("Time (forecasted period)") +
+  ylab("Energy delta") + guides(color = "none")
+
+plotData$time <- as.POSIXct(plotData$time, tz = "GMT")
+plotData %>%  group_by(dow) %>% summarise (minDelta = min(delta), maxDelta = max(delta))
+plotData %>% filter(as.Date(time) < as.Date("2012-12-22")) %>% group_by(dow) %>% summarise (minDelta = min(delta), maxDelta = max(delta))
+
+
+
+
+
+head(plotData)
+
 ggplot(data = plotData, aes(x = real, y = predicted)) + geom_point()
 ggplot(data = dataset[-trainindex,], aes(x = Time, y = Energy)) + geom_point()
 dataset[-trainindex, "predictedEnergy"] <- predicTS
 
-#ggplot(data = dataset[-trainindex,], aes(x = Time, y = [Energy, predictedEnergy])) + geom_point()
+ggplot(data = dataset[-trainindex,]) + geom_line(aes(x = Time, y = Energy), color = "red") + geom_line(aes(x = Time, y = predictedEnergy), color = "blue") + 
+                                       theme(legend.position = "bottom") + xlab("Time (forecasted period)")
 
-plot(dataset[-trainindex, "Time"], dataset[-trainindex, "Energy"], type = "lines", col = "red")
-lines(dataset[-trainindex, "Time"], dataset[-trainindex, "predictedEnergy"], type = "lines", col = "blue")
+
+head(plotData)
+ggplot(data = plotData)
 
 # Exploratory data analysis
 datasetTmp <- dataset
