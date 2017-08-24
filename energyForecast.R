@@ -52,7 +52,7 @@ head(locData$dataFrame)
 energySubset <- energyData %>% filter(Date >= as.Date("2012-01-01"), Date < as.Date("2013-01-01"))
 
 #transposeAllTable
-energySubset <- energyData
+#energySubset <- energyData
 
 #supress output
 sink("NUL")
@@ -140,6 +140,14 @@ head(locData$dataFrame)
 # 1 - Jan - Feb
 # 2 - Mar - Jun
 # 3 - 
+library(mFilter)
+filteredData <- bkfilter(locData$dataFrame$Energy, pl = 2, pu = 300, drift = TRUE)
+filteredData <- cffilter(locData$dataFrame$Energy, pl = 2, pu = 250, nfix = 2, drift = TRUE)
+filteredData <- hpfilter(locData$dataFrame$Energy, type = "lambda", freq = 5)
+locData$dataFrame$season <- filteredData$trend
+
+str(filteredData)
+
 nL <- 24*14
 locData$dataFrame$season <- EMA(locData$dataFrame$Energy, n = nL)
 locData$dataFrame$season[1:nL] <- locData$dataFrame$season[nL+1]
