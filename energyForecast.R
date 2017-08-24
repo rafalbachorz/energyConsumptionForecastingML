@@ -169,7 +169,7 @@ locData$dataFrame$hour <- as.factor(format(locData$dataFrame$Time, "%H"))
 str(locData$dataFrame)
 
 # convert to "othogonal" space
-dataset <- data.frame(predict(dummyVars(~ dayOfWeek + hour + + season + Energy + Time, data = locData$dataFrame), newdata = locData$dataFrame))
+dataset <- data.frame(predict(dummyVars(~ dayOfWeek + hour + season + Energy + Time, data = locData$dataFrame), newdata = locData$dataFrame))
 dataset$Time <- as.POSIXct(dataset$Time, origin = "1970-01-01", tz = "GMT")
 
 # how do first three days look like? 
@@ -196,7 +196,7 @@ length(trainindex)/length(index)
 #7 (dayOfWeek) + 24 (hour) + 1 (season) + 1 (response)
 featuresResponseCols <- c(seq(1, 7), seq(8, 8+23), seq(32, 35), 36)
 #featuresResponseCols <- c(seq(1, 7), seq(8, 8+23), 33)
-dataSetCols <- length(featuresResponseCols)
+NdataSetCols <- length(featuresResponseCols)
 
 head(dataset[trainindex, featuresResponseCols])
 training <- as.data.frame(dataset[trainindex, featuresResponseCols])
@@ -213,26 +213,26 @@ gam <- 10^{u}; w= 4.5 ##1.5,-1,0.5,2,3,4
 cost <- 10^{w}
 
 # support vector machine
-svmFit <- svm(training[,1:(dataSetCols-1)], 
-              training[,dataSetCols], 
+svmFit <- svm(training[,1:(NdataSetCols-1)], 
+              training[,NdataSetCols], 
               type = type,
               kernel = "radial",
               gamma = gam,
               cost = cost)
 summary(svmFit)
-predsvm <- predict(svmFit, testing[,1:(dataSetCols-1)])
+predsvm <- predict(svmFit, testing[,1:(NdataSetCols-1)])
 # random forest
-rfFit <- randomForest(training[,1:(dataSetCols-1)], 
-                      training[,dataSetCols],,
+rfFit <- randomForest(training[,1:(NdataSetCols-1)], 
+                      training[,NdataSetCols],,
                       ntree = 500)
 summary(rfFit)
-predrf <- predict(rfFit, testing[,1:(dataSetCols-1)])
+predrf <- predict(rfFit, testing[,1:(NdataSetCols-1)])
 
 head(predsvm)
 head(predrf)
 
 ###EVALUATION
-actualTS <- testing[,dataSetCols]
+actualTS <- testing[,NdataSetCols]
 predicTS <- predsvm ##choose appropriate
 predicTS <- predrf ##choose appropriate
 

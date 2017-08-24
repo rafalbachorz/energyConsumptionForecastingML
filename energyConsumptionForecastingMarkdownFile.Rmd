@@ -1,0 +1,224 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+# Load necessary library
+```{r}
+library(ggplot2)
+library(timeDate)
+library(dplyr)
+library(caret)
+library(e1071)
+library(randomForest)
+```
+
+# Set up relevant directories
+```{r}
+wdir="E:\\R\\energyConsumptionForecast"
+setwd(wdir)
+```
+
+# Load the data
+```{r}
+energyData <- read.csv("energy-consumption1.csv", skip = 2, header = FALSE, stringsAsFactors = FALSE)
+
+head(energyData)
+energyLabels <- "e0"
+for (iii in 1:47){
+  energyLabels = c(energyLabels, paste("e", as.character(iii), sep = ""))
+}
+colnames(energyData) <- c("Location", "Utility", "Unit", "Date", energyLabels, "Sum")
+energyData <- energyData %>% filter(Location == "Kew site")
+energyData$Date <- as.Date(energyData$Date, format = "%d/%m/%Y")
+```
+
+# Check the consistency
+
+```{r}
+energyData %>% filter(is.na(Date))
+# not needed anymore
+#energyData <- energyData %>% filter(!is.na(Date))
+min(energyData$Date)
+max(energyData$Date)
+```
+
+# Define the function that transposes the data into simple index-value form
+
+```{r}
+transpose <- function(x, locData, energyLabels){
+  rowDF <- data.frame(as.double(x[energyLabels]))
+  locData$tmptmp <- x
+  colnames(rowDF) <- c("Energy")
+  rowDF$Energy <- as.double(rowDF$Energy)
+  locData$dataFrame <- rbind(locData$dataFrame, rowDF, make.row.names = TRUE)
+}
+```
+
+# Get the one year (or any other) slice of the data
+
+```{r, eval=FALSE, include=FALSE}
+locData <- new.env()
+
+locData$dataFrame <- data.frame(Energy = as.double())
+str(locData$dataFrame)
+head(locData$dataFrame)
+
+# one year of data
+energySubset <- energyData %>% filter(Date >= as.Date("2012-01-01"), Date < as.Date("2013-01-01"))
+```
+
+# Execute the transposition
+
+```{r, include=FALSE}
+#supress output
+sink("NUL")
+apply(energySubset, 1, transpose, locData, energyLabels)
+sink()
+```
+
+# Add time
+
+```{r}
+timeAxis <- seq(from = as.POSIXlt(min(energySubset$Date), tz = "GMT"), by = 1800, length.out = nrow(locData$dataFrame))
+locData$dataFrame$Time <- timeAxis
+head(locData$dataFrame)
+tail(locData$dataFrame)
+```
+
+# Aggregate to one-hour resolution
+
+```{r}
+locData$dataFrame <- locData$dataFrame %>% group_by(format(Time, "%Y-%m-%d %H")) %>% summarise(mean(Energy), min(Time))
+colnames(locData$dataFrame) <- c("hour", "Energy", "Time")
+locData$dataFrame$hour <- NULL
+head(locData$dataFrame, n = 20)
+```
+
+# Any problems with the data?
+```{r}
+locData$dataFrame %>% filter(is.na(Energy))
+```
+
+# How the data antually looks like?
+```{r}
+# plot all data
+ggplot(data = locData$dataFrame, aes(x = Time, y = Energy)) + geom_line()
+```
+
+# Determine the seasonality in the simplest possible way: EWMA fiter
+
+```{r}
+nL <- 24*28
+locData$dataFrame$season <- EMA(locData$dataFrame$Energy, n = nL)
+locData$dataFrame$season[1:nL] <- locData$dataFrame$season[nL+1]
+```
+
+# Plot the data again
+```{r}
+ggplot(data = locData$dataFrame) + geom_line(aes(x = Time, y = Energy), col = "black") + geom_line(aes(x = Time, y = season), col = "red")
+```
+
+# Determine the seasons - turn into categorical variable
+
+```{r}
+nBins <- 3
+locData$dataFrame$seasonLevels <- cut(locData$dataFrame$season, breaks = nBins, labels = seq(1, nBins))
+head(locData$dataFrame, n = 10)
+```
+
+```{r}
+ggplot(data = locData$dataFrame) + geom_line(aes(x = Time, y = Energy, colour = "Raw data")) + geom_line(aes(x = Time, y = season, colour = "Trend")) + geom_line(aes(x = Time, y = as.numeric(seasonLevels) * max(locData$dataFrame$Energy) / max(as.numeric(seasonLevels)), colour = "Season")) +
+  scale_y_continuous(sec.axis = sec_axis(~ . * max(as.numeric(locData$dataFrame$seasonLevels)) / max(locData$dataFrame$Energy), name = "Season level")) +
+  labs(y = "Energy", x = "Date and time", colour = "Curves")
+```
+
+# Create predictors
+```{r}
+# create day of week feature
+locData$dataFrame$dayOfWeek <- as.factor(dayOfWeek(timeDate(locData$dataFrame$Time)))
+# create hour feature
+locData$dataFrame$hour <- as.factor(format(locData$dataFrame$Time, "%H"))
+head(locData$dataFrame)
+```
+
+# Convert to "othogonal" space
+
+```{r}
+dataset <- data.frame(predict(dummyVars(~ dayOfWeek + hour + seasonLevels + Energy + Time, data = locData$dataFrame), newdata = locData$dataFrame))
+dataset$Time <- as.POSIXct(dataset$Time, origin = "1970-01-01", tz = "GMT")
+head(dataset, n = 24)
+```
+
+# Create training index
+```{r}
+trainindex <- which(dataset$Time < as.POSIXct("2012-11-01 00:00", format = "%Y-%m-%d %H:%M", tz = "GMT") | dataset$Time >= as.POSIXct("2012-12-01 00:00", format = "%Y-%m-%d %H:%M", tz = "GMT"))
+```
+
+# Create feature-response vector
+```{r}
+#7 (dayOfWeek) + 24 (hour) + 1 (season) + 1 (response)
+featuresResponseCols <- c(seq(1, 7), seq(8, 8+23), seq(32, 34), 35)
+#featuresResponseCols <- c(seq(1, 7), seq(8, 8+23), 33)
+NdataSetCols <- length(featuresResponseCols)
+
+head(dataset[trainindex, featuresResponseCols])
+```
+
+# Get the training set
+```{r}
+training <- as.data.frame(dataset[trainindex, featuresResponseCols])
+rownames(training) = NULL
+head(training)
+```
+
+# Get the testing set
+```{r}
+testing = as.data.frame(dataset[-trainindex, featuresResponseCols])
+rownames(testing) = NULL
+head(testing)
+```
+
+# Train the model
+```{r}
+type <- "eps-regression" #regression
+u <- -2 # -3,-2,-1,0,1,2,3
+gam <- 10^{u} 
+w= 4.5 #1.5,-1,0.5,2,3,4
+cost <- 10^{w}
+
+# support vector machine
+svmFit <- svm(training[,1:(NdataSetCols-1)], 
+              training[,NdataSetCols], 
+              type = type,
+              kernel = "radial",
+              gamma = gam,
+              cost = cost)
+summary(svmFit)
+```
+
+# Predict - this is actually forecasting step
+```{r}
+predsvm <- predict(svmFit, testing[,1:(NdataSetCols-1)])
+```
+
+# Prepare visualisation data frame
+```{r}
+actualTS <- testing[,NdataSetCols]
+predicTS <- predsvm
+
+plotData <- data.frame(actualTS, predicTS)
+colnames(plotData) <- c("real", "predicted")
+plotData$time <- dataset[-trainindex, "Time"]
+plotData$delta <- plotData$predicted - plotData$real
+plotData$dow <- dayOfWeek(timeDate(plotData$time))
+head(plotData)
+```
+
+# Plot the results
+```{r Comparison between real and predicted values}
+ggplot(data = plotData) + geom_line(aes(x = time, y = real, color = "Real values")) + 
+  geom_line(aes(x = time, y = predicted, color = "Predicted values")) + 
+  theme(legend.position = "right") +
+  labs(y = "Energy", x = "Date and time (forecasted period)", colour = "Curves")
+```
+
