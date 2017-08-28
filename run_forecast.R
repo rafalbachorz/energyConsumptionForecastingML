@@ -19,7 +19,7 @@ run <- function(dfData, dfParameters){
   dataset$Time <- as.POSIXct(dataset$Time, origin = "1970-01-01", tz = "GMT")
   
   
-  model <- loadRDS(filePath)
+  model <- readRDS(filePath)
   NdataSetCols <- ncol(dataset)
   prediction <- predict(model, dataset[,1:(NdataSetCols-1)])
   
