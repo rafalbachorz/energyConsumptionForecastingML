@@ -1,5 +1,4 @@
 run <- function(dfData, dfParameters){
-  
   library(timeDate)
   library(dplyr)
   library(TTR)
