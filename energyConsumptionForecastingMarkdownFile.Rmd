@@ -64,7 +64,7 @@ str(locData$dataFrame)
 head(locData$dataFrame)
 
 # one year of data
-energySubset <- energyData %>% filter(Date >= as.Date("2012-01-01"), Date < as.Date("2013-01-01"))
+energySubset <- energyData %>% filter(Date >= as.Date("2012-01-01"), Date < as.Date("2014-01-01"))
 ```
 
 # Execute the transposition
@@ -97,6 +97,8 @@ head(locData$dataFrame, n = 20)
 # Any problems with the data?
 ```{r}
 locData$dataFrame %>% filter(is.na(Energy))
+locData$dataFrame <- locData$dataFrame %>% filter(!is.na(Energy))
+head(locData$dataFrame)
 ```
 
 # How the data antually looks like?

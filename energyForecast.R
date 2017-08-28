@@ -59,6 +59,8 @@ sink("NUL")
 apply(energySubset, 1, transpose, locData, energyLabels)
 sink()
 
+head(locData$dataFrame)
+
 timeAxis <- seq(from = as.POSIXlt(min(energySubset$Date), tz = "GMT"), by = 1800, length.out = nrow(locData$dataFrame))
 head(locData$dataFrame)
 tail(locData$dataFrame)
@@ -82,9 +84,17 @@ locData$dataFrame$hour <- NULL
 locData$dataFrame %>% filter(is.na(Energy))
 locData$dataFrame <- locData$dataFrame %>% filter(!is.na(Energy))
 
+?xts
+library(xts)
+timeSeries <- xts(x = locData$dataFrame$Energy, order.by = locData$dataFrame$Time) 
+timeSeries1 <- lag(timeSeries, 10)
+head(timeSeries)
+head(timeSeries1, n = 11)
 str(locData$dataFrame)
-
-
+lag(locData$dataFrame, k = 1)
+head(locData$dataFrame, n = 11)
+?diff
+?lag
 #### seasonal decommposition
 library(xts)
 library(forecast)
