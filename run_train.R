@@ -7,7 +7,7 @@ run <- function(dfData, dfParameters){
   library(randomForest)
   
   
-  filePath <- as.character(dfParameters %>% filter(name == "path") %>% summarise(value))
+  filePath <- as.character(dfParameters %>% filter(name == "pathModelOut") %>% summarise(value))
   subsetBeg <- as.character(dfParameters %>% filter(name == "trainBeg") %>% summarise(value))
   subsetEnd <- as.character(dfParameters %>% filter(name == "trainEnd") %>% summarise(value))
   
@@ -41,7 +41,7 @@ run <- function(dfData, dfParameters){
   type <- "eps-regression" #regression
   u <- -2 # -3,-2,-1,0,1,2,3
   gam <- 10^{u} 
-  w= 4.5 #1.5,-1,0.5,2,3,4
+  w <- 4.5 #1.5,-1,0.5,2,3,4
   cost <- 10^{w}
   
   # support vector machine

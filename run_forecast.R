@@ -7,7 +7,7 @@ run <- function(dfData, dfParameters){
   library(randomForest)
   
   
-  filePath <- as.character(dfParameters %>% filter(name == "path") %>% summarise(value))
+  filePath <- as.character(dfParameters %>% filter(name == "pathModelIn") %>% summarise(value))
 
   # create day of week feature
   dfData$dayOfWeek <- as.factor(dayOfWeek(timeDate(dfData$Time)))

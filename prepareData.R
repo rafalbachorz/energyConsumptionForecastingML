@@ -3,9 +3,9 @@ prepareData <- function(dfParameters){
   
   
   # parse initial df
-  filePath <- as.character(dfParameters %>% filter(name == "path") %>% summarise(value))
-  subsetBeg <- as.character(dfParameters %>% filter(name == "subsetBeg") %>% summarise(value))
-  subsetEnd <- as.character(dfParameters %>% filter(name == "subsetEnd") %>% summarise(value))
+  filePath <- as.character(dfParameters %>% filter(name == "pathRawFile") %>% summarise(value))
+  subsetBeg <- as.character(dfParameters %>% filter(name == "rawFileBeg") %>% summarise(value))
+  subsetEnd <- as.character(dfParameters %>% filter(name == "rawFileEnd") %>% summarise(value))
   
   #wdir="E:\\R\\energyConsumptionForecast\\energyConsumptionForecastingML"
   #setwd(wdir)
