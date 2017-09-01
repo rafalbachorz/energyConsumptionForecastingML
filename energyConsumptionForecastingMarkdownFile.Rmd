@@ -6,6 +6,7 @@ output: html_notebook
 ```{r}
 Sys.setenv("LANGUAGE"="En")
 Sys.setlocale("LC_ALL", "English")
+set.seed(1234)
 ```
 
 # Load necessary library
@@ -193,8 +194,8 @@ head(dataset)
 
 # Create training index
 ```{r}
-trainindex <- which(dataset$Time < as.POSIXct("2012-02-01 00:00", format = "%Y-%m-%d %H:%M", tz = "GMT") | 
-                    dataset$Time >= as.POSIXct("2012-03-01 00:00", format = "%Y-%m-%d %H:%M", tz = "GMT"))
+trainindex <- which(dataset$Time < as.POSIXct("2012-03-01 00:00", format = "%Y-%m-%d %H:%M", tz = "GMT") | 
+                    dataset$Time >= as.POSIXct("2012-04-01 00:00", format = "%Y-%m-%d %H:%M", tz = "GMT"))
 ```
 
 # Create feature-response vector
